@@ -236,7 +236,7 @@ const Index = () => {
               Perfect! Your Data is Ready
             </h2>
             <p className="text-lg text-muted-foreground max-w-md mx-auto">
-              Your CRM-ready file has been generated with AI precision. Import it directly into Odoo CRM for instant results.
+              Your leads have been successfully processed and are ready for use in your Odoo CRM system.
             </p>
           </div>
 

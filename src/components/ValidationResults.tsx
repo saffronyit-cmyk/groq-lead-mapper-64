@@ -1,10 +1,13 @@
-import React from 'react';
-import { CheckCircle, AlertTriangle, XCircle, Users } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState } from 'react';
+import { CheckCircle, AlertTriangle, XCircle, Users, ArrowLeft, Download, Database, Upload } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { DownloadSelector } from '@/components/DownloadSelector';
+import OdooConfig from '@/components/OdooConfig';
+import OdooUploader from '@/components/OdooUploader';
+import { type OdooConfig as OdooConfigType } from '@/services/odooService';
 
 interface ValidationIssue {
   type: 'error' | 'warning' | 'duplicate';
@@ -49,15 +52,38 @@ export const ValidationResults: React.FC<ValidationResultsProps> = ({
   validRecords = [],
   mappings = []
 }) => {
+  const [uploadMode, setUploadMode] = useState<'download' | 'odoo'>('download');
+  const [odooConfig, setOdooConfig] = useState<OdooConfigType | null>(null);
+  const [showOdooConfig, setShowOdooConfig] = useState(false);
+
   const validationRate = (stats.validRecords / stats.totalRecords) * 100;
   const showDownloadSelector = validRecords.length > 0 && mappings.length > 0;
 
+  const handleOdooConfigSave = (config: OdooConfigType) => {
+    setOdooConfig(config);
+    setShowOdooConfig(false);
+    setUploadMode('odoo');
+  };
+
+  const handleOdooUploadComplete = () => {
+    onNext(); // Move to success step
+  };
+
   return (
     <div className="space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold text-foreground">Data Validation Complete</h2>
+      <div className="text-center space-y-4">
+        <div className="flex justify-center mb-4">
+          <div className="flex items-center gap-3 px-6 py-3 rounded-full bg-gradient-success text-success-foreground shadow-success">
+            <CheckCircle className="w-5 h-5" />
+            <span className="font-medium">Validation Complete</span>
+          </div>
+        </div>
+        
+        <h2 className="text-2xl font-bold text-foreground">
+          Data Quality Report
+        </h2>
         <p className="text-muted-foreground">
-          Your CRM data has been processed and validated. Review the results below.
+          Your data has been validated and is ready for processing
         </p>
       </div>
 
@@ -172,36 +198,105 @@ export const ValidationResults: React.FC<ValidationResultsProps> = ({
         </Card>
       )}
 
-      {/* Download Selector or Action Buttons */}
-      {showDownloadSelector ? (
-        <div className="space-y-6">
-          <div className="flex justify-center">
-            <Button 
-              onClick={onBack}
-              variant="outline"
-              size="lg"
-            >
-              Back to Mapping
-            </Button>
-          </div>
-          
-          <DownloadSelector
-            validRecords={validRecords}
-            mappings={mappings}
-            stats={stats}
-            onDownloadComplete={onNext}
+      {/* Upload Mode Selection */}
+      {showDownloadSelector && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Choose Upload Method
+            </CardTitle>
+            <CardDescription>
+              Download the file or upload directly to your Odoo database
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Button
+                variant={uploadMode === 'download' ? 'default' : 'outline'}
+                onClick={() => setUploadMode('download')}
+                className="h-auto p-6 flex-col gap-2"
+              >
+                <Download className="h-6 w-6" />
+                <div className="text-center">
+                  <div className="font-medium">Download File</div>
+                  <div className="text-xs text-muted-foreground">Export and import manually</div>
+                </div>
+              </Button>
+              
+              <Button
+                variant={uploadMode === 'odoo' ? 'default' : 'outline'}
+                onClick={() => {
+                  if (!odooConfig) {
+                    setShowOdooConfig(true);
+                  } else {
+                    setUploadMode('odoo');
+                  }
+                }}
+                className="h-auto p-6 flex-col gap-2"
+              >
+                <Database className="h-6 w-6" />
+                <div className="text-center">
+                  <div className="font-medium">Upload to Odoo</div>
+                  <div className="text-xs text-muted-foreground">Direct database upload</div>
+                </div>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Odoo Configuration Modal */}
+      {showOdooConfig && (
+        <div className="mt-6">
+          <OdooConfig
+            onConfigSave={handleOdooConfigSave}
+            initialConfig={odooConfig}
           />
         </div>
-      ) : (
-        <div className="flex justify-center gap-4">
-          <Button 
-            onClick={onBack}
-            variant="outline"
-            size="lg"
+      )}
+
+      {/* Upload Actions */}
+      {showDownloadSelector && uploadMode === 'download' && (
+        <DownloadSelector
+          validRecords={validRecords}
+          mappings={mappings}
+          stats={stats}
+          onDownloadComplete={onNext}
+        />
+      )}
+
+      {showDownloadSelector && uploadMode === 'odoo' && odooConfig && (
+        <OdooUploader
+          config={odooConfig}
+          data={validRecords}
+          mappings={mappings}
+          onUploadComplete={handleOdooUploadComplete}
+        />
+      )}
+
+      {/* Navigation */}
+      <div className="flex justify-between items-center pt-6">
+        <Button
+          onClick={onBack}
+          variant="outline"
+          disabled={isProcessing}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Mapping
+        </Button>
+        
+        {odooConfig && uploadMode === 'odoo' && (
+          <Button
+            onClick={() => setShowOdooConfig(true)}
+            variant="ghost"
+            size="sm"
           >
-            Back to Mapping
+            Edit Odoo Config
           </Button>
-          
+        )}
+        
+        {!showDownloadSelector && (
           <Button 
             onClick={onNext}
             size="lg"
@@ -210,8 +305,8 @@ export const ValidationResults: React.FC<ValidationResultsProps> = ({
           >
             {isProcessing ? "Processing..." : "Continue"}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
