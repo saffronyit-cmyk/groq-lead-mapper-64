@@ -1,1 +1,4 @@
 project_id = "zmkesfrgoisfopgqdccj"
+
+[functions.odoo-proxy]
+verify_jwt = false

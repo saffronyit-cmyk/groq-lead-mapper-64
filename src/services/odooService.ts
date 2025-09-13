@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 export interface OdooConfig {
   url: string;
   database: string;
@@ -45,82 +47,38 @@ export class OdooService {
 
   static async testConnection(config: OdooConfig): Promise<{ success: boolean; message: string }> {
     try {
-      const uid = await this.authenticate(config);
-      if (uid) {
-        return { success: true, message: 'Connection successful!' };
+      const { data, error } = await supabase.functions.invoke('odoo-proxy', {
+        body: { action: 'test', config },
+      });
+      if (error) {
+        return { success: false, message: error.message || 'Connection failed' };
       }
-      return { success: false, message: 'Authentication failed' };
+      return (data as { success: boolean; message: string }) ?? { success: false, message: 'No response from server' };
     } catch (error) {
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : 'Connection failed' 
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Connection failed',
       };
     }
   }
 
   static async uploadLeads(
-    config: OdooConfig, 
-    leads: any[], 
+    config: OdooConfig,
+    leads: any[],
     mappings: any[]
   ): Promise<OdooUploadResult> {
     try {
-      const uid = await this.authenticate(config);
-      
-      // Transform leads to Odoo format
-      const odooLeads = leads.map(lead => this.transformLeadToOdoo(lead, mappings));
-      
-      // Upload leads in batches of 50
-      const batchSize = 50;
-      const createdRecords: number[] = [];
-      const errors: string[] = [];
-      
-      for (let i = 0; i < odooLeads.length; i += batchSize) {
-        const batch = odooLeads.slice(i, i + batchSize);
-        
-        try {
-          const response = await fetch(`${config.url}/jsonrpc`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              method: 'call',
-              params: {
-                service: 'object',
-                method: 'execute_kw',
-                args: [
-                  config.database,
-                  uid,
-                  config.apiKey,
-                  'res.partner', // Odoo model for contacts/leads
-                  'create',
-                  [batch]
-                ]
-              },
-              id: i + 1
-            })
-          });
-
-          const result = await response.json();
-          
-          if (result.error) {
-            errors.push(`Batch ${Math.floor(i/batchSize) + 1}: ${result.error.message}`);
-          } else if (result.result) {
-            createdRecords.push(...(Array.isArray(result.result) ? result.result : [result.result]));
-          }
-        } catch (batchError) {
-          errors.push(`Batch ${Math.floor(i/batchSize) + 1}: ${batchError instanceof Error ? batchError.message : 'Unknown error'}`);
-        }
+      const { data, error } = await supabase.functions.invoke('odoo-proxy', {
+        body: { action: 'upload', config, leads, mappings },
+      });
+      if (error) {
+        return {
+          success: false,
+          uploadedCount: 0,
+          errors: [error.message || 'Upload failed'],
+        };
       }
-
-      return {
-        success: createdRecords.length > 0,
-        uploadedCount: createdRecords.length,
-        errors,
-        createdRecords
-      };
-
+      return (data as OdooUploadResult) ?? { success: false, uploadedCount: 0, errors: ['No response from server'] };
     } catch (error) {
       return {
         success: false,
