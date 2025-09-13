@@ -10,7 +10,6 @@ import { FileProcessor, ParsedData } from '@/services/fileProcessor';
 import { useToast } from '@/hooks/use-toast';
 import { useOptimizedDataProcessing } from '@/hooks/useOptimizedDataProcessing';
 import { Sparkles, Shield, Zap } from 'lucide-react';
-
 interface FieldMapping {
   sourceField: string;
   targetField: string;
@@ -18,7 +17,6 @@ interface FieldMapping {
   isNewField: boolean;
   dataPreview: string[];
 }
-
 interface ValidationIssue {
   type: 'error' | 'warning' | 'duplicate';
   field: string;
@@ -26,7 +24,6 @@ interface ValidationIssue {
   row: number;
   message: string;
 }
-
 interface ValidationStats {
   totalRecords: number;
   validRecords: number;
@@ -34,11 +31,13 @@ interface ValidationStats {
   warningRecords: number;
   duplicateRecords: number;
 }
-
 const Index = () => {
-  const { toast } = useToast();
-  const { debounce } = useOptimizedDataProcessing();
-  
+  const {
+    toast
+  } = useToast();
+  const {
+    debounce
+  } = useOptimizedDataProcessing();
   const [currentStep, setCurrentStep] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
@@ -57,13 +56,13 @@ const Index = () => {
       setParsedData(data);
       toast({
         title: "File uploaded successfully",
-        description: `Processed ${data.data.length - 1} records from ${file.name}`,
+        description: `Processed ${data.data.length - 1} records from ${file.name}`
       });
     } catch (error) {
       toast({
         title: "Upload failed",
         description: error instanceof Error ? error.message : "Failed to process file",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setIsProcessing(false);
@@ -73,22 +72,17 @@ const Index = () => {
   // Memoized mapping handler with debouncing
   const handleStartMapping = useCallback(async () => {
     if (!parsedData) return;
-
     setIsProcessing(true);
     setCurrentStep(1);
-    
     try {
       const fieldMappings = await GroqService.analyzeAndMapFields(parsedData.data);
       setMappings(fieldMappings);
-      
+
       // Check if AI mapping was successful or if we're using fallback
       const hasHighConfidenceMappings = fieldMappings.some(m => m.confidence >= 85);
-      
       toast({
         title: hasHighConfidenceMappings ? "AI mapping complete" : "Smart mapping applied",
-        description: hasHighConfidenceMappings 
-          ? `Mapped ${fieldMappings.length} fields with AI analysis`
-          : `Applied automatic mapping for ${fieldMappings.length} fields. Review and edit as needed.`,
+        description: hasHighConfidenceMappings ? `Mapped ${fieldMappings.length} fields with AI analysis` : `Applied automatic mapping for ${fieldMappings.length} fields. Review and edit as needed.`,
         variant: hasHighConfidenceMappings ? "default" : "default"
       });
     } catch (error) {
@@ -96,7 +90,7 @@ const Index = () => {
       toast({
         title: "Mapping service error",
         description: "Please try again or contact support if the issue persists",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setIsProcessing(false);
@@ -106,9 +100,7 @@ const Index = () => {
   // Memoized validation handler
   const handleValidateData = useCallback(async () => {
     if (!parsedData || !mappings.length) return;
-
     setIsProcessing(true);
-
     try {
       // Transform data according to mappings
       const transformedData = parsedData.data.slice(1).map(row => {
@@ -121,20 +113,19 @@ const Index = () => {
         });
         return record;
       });
-
       const results = await GroqService.validateData(transformedData);
       setValidationResults(results);
       setCurrentStep(2); // Move to validation results step with download
-      
+
       toast({
         title: "Validation complete",
-        description: `${results.stats.validRecords} valid records out of ${results.stats.totalRecords} total - Ready for download!`,
+        description: `${results.stats.validRecords} valid records out of ${results.stats.totalRecords} total - Ready for download!`
       });
     } catch (error) {
       toast({
         title: "Validation failed",
         description: error instanceof Error ? error.message : "Failed to validate data",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setIsProcessing(false);
@@ -144,10 +135,10 @@ const Index = () => {
   // Memoized download completion handler
   const handleDownloadComplete = useCallback(() => {
     setCurrentStep(3); // Move to success step
-    
+
     toast({
       title: "Download successful!",
-      description: `Your CRM file is ready for Odoo import with ${validationResults?.stats.validRecords} records`,
+      description: `Your CRM file is ready for Odoo import with ${validationResults?.stats.validRecords} records`
     });
   }, [validationResults, toast]);
 
@@ -156,10 +147,9 @@ const Index = () => {
     const updatedMappings = [...mappings];
     updatedMappings[index] = updatedMapping;
     setMappings(updatedMappings);
-    
     toast({
       title: "Mapping updated",
-      description: `${updatedMapping.sourceField} → ${updatedMapping.targetField}`,
+      description: `${updatedMapping.sourceField} → ${updatedMapping.targetField}`
     });
   }, [mappings, toast]);
 
@@ -178,46 +168,17 @@ const Index = () => {
 
   // Memoize step content to prevent unnecessary re-renders
   const stepContent = useMemo(() => {
-
     if (currentStep === 0) {
-      return (
-        <FileUpload
-          onFileUpload={handleFileUpload}
-          onNext={handleStartMapping}
-          isProcessing={isProcessing}
-        />
-      );
+      return <FileUpload onFileUpload={handleFileUpload} onNext={handleStartMapping} isProcessing={isProcessing} />;
     }
-
     if (currentStep === 1 && mappings.length > 0) {
-      return (
-        <MappingView
-          mappings={mappings}
-          onEditMapping={handleEditMapping}
-          onNext={handleValidateData}
-          onBack={() => setCurrentStep(0)}
-          isProcessing={isProcessing}
-        />
-      );
+      return <MappingView mappings={mappings} onEditMapping={handleEditMapping} onNext={handleValidateData} onBack={() => setCurrentStep(0)} isProcessing={isProcessing} />;
     }
-
     if (currentStep === 2 && validationResults) {
-      return (
-        <ValidationResults
-          stats={validationResults.stats}
-          issues={validationResults.issues}
-          onNext={handleDownloadComplete}
-          onBack={handleBackToMapping}
-          isProcessing={isProcessing}
-          validRecords={validationResults.validRecords}
-          mappings={mappings}
-        />
-      );
+      return <ValidationResults stats={validationResults.stats} issues={validationResults.issues} onNext={handleDownloadComplete} onBack={handleBackToMapping} isProcessing={isProcessing} validRecords={validationResults.validRecords} mappings={mappings} />;
     }
-
     if (currentStep === 3) {
-      return (
-        <div className="text-center space-y-8">
+      return <div className="text-center space-y-8">
           <div className="flex justify-center mb-6">
             <div className="relative">
               <div className="w-24 h-24 rounded-full bg-gradient-accent flex items-center justify-center shadow-hero">
@@ -241,37 +202,18 @@ const Index = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
-            <button
-              onClick={handleReset}
-              className="px-6 py-3 bg-gradient-primary text-primary-foreground rounded-xl font-medium shadow-elegant hover:shadow-hero transition-all duration-300 hover:scale-105"
-            >
+            <button onClick={handleReset} className="px-6 py-3 bg-gradient-primary text-primary-foreground rounded-xl font-medium shadow-elegant hover:shadow-hero transition-all duration-300 hover:scale-105">
               Process Another File
             </button>
             <span className="text-sm text-muted-foreground">
               Ready for more data transformation magic?
             </span>
           </div>
-        </div>
-      );
+        </div>;
     }
-
     return null;
-  }, [
-    currentStep,
-    mappings,
-    validationResults,
-    isProcessing,
-    handleFileUpload,
-    handleStartMapping,
-    handleEditMapping,
-    handleValidateData,
-    handleDownloadComplete,
-    handleBackToMapping,
-    handleReset
-  ]);
-
-  return (
-    <div className="min-h-screen bg-gradient-bg">
+  }, [currentStep, mappings, validationResults, isProcessing, handleFileUpload, handleStartMapping, handleEditMapping, handleValidateData, handleDownloadComplete, handleBackToMapping, handleReset]);
+  return <div className="min-h-screen bg-gradient-bg">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-hero opacity-5" />
@@ -448,27 +390,15 @@ const Index = () => {
                         </p>
                       </div>
                       
-                      <a 
-                        href="https://www.linkedin.com/in/it-devarsh-patel/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-                      >
+                      <a href="https://www.linkedin.com/in/it-devarsh-patel/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                         </svg>
                         Connect on LinkedIn
                       </a>
                     </div>
                     
-                    <div className="flex items-center justify-center gap-2 pt-2">
-                      <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
-                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                        <span className="text-xs font-semibold text-primary">
-                          Available for Projects
-                        </span>
-                      </div>
-                    </div>
+                    
                   </div>
                 </div>
               </div>
@@ -483,8 +413,6 @@ const Index = () => {
 
       {/* Footer */}
       <Footer />
-    </div>
-  );
+    </div>;
 };
-
 export default Index;
