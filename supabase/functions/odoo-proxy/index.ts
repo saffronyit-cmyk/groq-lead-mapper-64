@@ -32,45 +32,39 @@ function sanitizeUrl(url: string) {
 }
 
 async function authenticate(baseUrl: string, db: string, login: string, password: string) {
-  const resp = await fetch(`${baseUrl}/web/session/authenticate`, {
+  const resp = await fetch(`${baseUrl}/jsonrpc`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
       method: "call",
-      params: { db, login, password },
+      params: {
+        service: "common",
+        method: "authenticate",
+        args: [db, login, password, {}],
+      },
       id: Date.now(),
     }),
   });
 
-  const setCookie = resp.headers.get("set-cookie") || "";
-  // Try to extract the session cookie
-  let cookieHeader = "";
-  const sessionCookie = setCookie.split(",").find((c) => c.includes("session_id="));
-  if (sessionCookie) cookieHeader = sessionCookie.split(";")[0];
-
   const data = await resp.json();
   if (data?.error) throw new Error(data.error?.data?.message || data.error?.message || "Authentication failed");
-  const uid = data?.result?.uid;
+  const uid = data?.result;
   if (!uid) throw new Error("Authentication failed: invalid credentials");
-  return { uid, cookie: cookieHeader } as { uid: number; cookie: string };
+  return { uid } as { uid: number };
 }
 
-async function callKw(baseUrl: string, cookie: string, model: string, method: string, args: any[], kwargs: any = {}) {
-  const resp = await fetch(`${baseUrl}/web/dataset/call_kw`, {
+async function callKw(baseUrl: string, db: string, uid: number, password: string, model: string, method: string, args: any[], kwargs: any = {}) {
+  const resp = await fetch(`${baseUrl}/jsonrpc`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(cookie ? { Cookie: cookie } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
       method: "call",
       params: {
-        model,
-        method,
-        args,
-        kwargs,
+        service: "object",
+        method: "execute_kw",
+        args: [db, uid, password, model, method, args, kwargs],
       },
       id: Date.now(),
     }),
@@ -176,7 +170,7 @@ serve(async (req: Request) => {
     }
 
     const baseUrl = sanitizeUrl(String(config.url));
-    const { uid, cookie } = await authenticate(baseUrl, config.database, config.username, config.apiKey);
+    const { uid } = await authenticate(baseUrl, config.database, config.username, config.apiKey);
 
     if (action === "test") {
       return json({ success: true, message: `Connection successful (uid ${uid})` });
@@ -192,7 +186,7 @@ serve(async (req: Request) => {
       for (let i = 0; i < toCreate.length; i += batchSize) {
         const batch = toCreate.slice(i, i + batchSize);
         try {
-          const result = await callKw(baseUrl, cookie, "res.partner", "create", [batch], {});
+          const result = await callKw(baseUrl, config.database, uid, config.apiKey, "res.partner", "create", [batch], {});
           if (Array.isArray(result)) {
             createdRecords.push(...result);
           } else if (typeof result === "number") {
