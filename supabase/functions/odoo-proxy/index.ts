@@ -74,10 +74,10 @@ async function callKw(baseUrl: string, db: string, uid: number, password: string
   return data?.result;
 }
 
-function transformLeadToOdoo(lead: Record<string, any>, mappings: any[]): Record<string, any> {
-  const odooLead: Record<string, any> = {
-    is_company: false,
-    customer_rank: 1,
+function transformLeadToCrmLead(lead: Record<string, any>, mappings: any[]): Record<string, any> {
+  // Create CRM Opportunity (crm.lead) payload so it shows in the Pipeline (kanban)
+  const crmLead: Record<string, any> = {
+    type: "opportunity", // ensure record appears in CRM pipeline
   };
 
   const mappedSources = new Set<string>();
@@ -91,56 +91,61 @@ function transformLeadToOdoo(lead: Record<string, any>, mappings: any[]): Record
 
     switch (target) {
       case "Name":
-        odooLead.name = value;
+        // Use as the main opportunity name
+        crmLead.name = value;
         break;
       case "Company Name":
-        odooLead.parent_name = value;
-        if (!odooLead.name || odooLead.name === value) {
-          odooLead.is_company = true;
-        }
+        // Company for the lead (free text). Avoid guessing partner_id
+        crmLead.partner_name = value;
+        // If we don't have a title for the opportunity, use company name
+        if (!crmLead.name) crmLead.name = String(value);
         break;
       case "Contact Name":
-        if (!odooLead.name) odooLead.name = value;
+        crmLead.contact_name = value;
+        if (!crmLead.name) crmLead.name = String(value);
         break;
       case "Email":
-        odooLead.email = value;
+        crmLead.email_from = value;
         break;
       case "Phone":
-        odooLead.phone = value;
+        crmLead.phone = value;
         break;
       case "Mobile":
-        odooLead.mobile = value;
+        crmLead.mobile = value;
         break;
       case "Street":
-        odooLead.street = value;
+        crmLead.street = value;
         break;
       case "Street2":
-        odooLead.street2 = value;
+        crmLead.street2 = value;
         break;
       case "City":
-        odooLead.city = value;
+        crmLead.city = value;
         break;
       case "State":
-        // Avoid invalid state_id guesses; keep the info in notes
-        odooLead.comment = (odooLead.comment ? `${odooLead.comment}\n` : "") + `State: ${value}`;
+        // Avoid invalid state_id guesses; keep the info in description
+        crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + `State: ${value}`;
         break;
       case "Zip":
-        odooLead.zip = value;
+        crmLead.zip = value;
         break;
       case "Country":
-        // Avoid invalid country_id guesses; keep the info in notes
-        odooLead.comment = (odooLead.comment ? `${odooLead.comment}\n` : "") + `Country: ${value}`;
+        // Avoid invalid country_id guesses; keep the info in description
+        crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + `Country: ${value}`;
         break;
       case "Website":
-        odooLead.website = value;
+        crmLead.website = value;
         break;
       case "Job Position":
-        odooLead.function = value;
+        crmLead.function = value;
+        break;
+      case "Notes":
+        crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + String(value);
         break;
     }
   }
 
-  // Add any remaining fields to notes
+  // Add any remaining fields to description
   const unmapped: string[] = [];
   for (const key of Object.keys(lead || {})) {
     if (!mappedSources.has(key)) {
@@ -149,14 +154,15 @@ function transformLeadToOdoo(lead: Record<string, any>, mappings: any[]): Record
     }
   }
   if (unmapped.length > 0) {
-    odooLead.comment = (odooLead.comment ? `${odooLead.comment}\n` : "") + unmapped.join("\n");
+    crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + unmapped.join("\n");
   }
 
-  if (!odooLead.name) {
-    odooLead.name = odooLead.parent_name || odooLead.email || "Imported Lead";
+  // Ensure we have a name
+  if (!crmLead.name) {
+    crmLead.name = crmLead.contact_name || crmLead.partner_name || crmLead.email_from || "Imported Opportunity";
   }
 
-  return odooLead;
+  return crmLead;
 }
 
 serve(async (req: Request) => {
@@ -177,7 +183,7 @@ serve(async (req: Request) => {
     }
 
     if (action === "upload") {
-      const toCreate = (Array.isArray(leads) ? leads : []).map((lead) => transformLeadToOdoo(lead, Array.isArray(mappings) ? mappings : []));
+      const toCreate = (Array.isArray(leads) ? leads : []).map((lead) => transformLeadToCrmLead(lead, Array.isArray(mappings) ? mappings : []));
 
       const batchSize = 50;
       const createdRecords: number[] = [];
@@ -186,7 +192,7 @@ serve(async (req: Request) => {
       for (let i = 0; i < toCreate.length; i += batchSize) {
         const batch = toCreate.slice(i, i + batchSize);
         try {
-          const result = await callKw(baseUrl, config.database, uid, config.apiKey, "res.partner", "create", [batch], {});
+          const result = await callKw(baseUrl, config.database, uid, config.apiKey, "crm.lead", "create", [batch], {});
           if (Array.isArray(result)) {
             createdRecords.push(...result);
           } else if (typeof result === "number") {
