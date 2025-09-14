@@ -12,7 +12,10 @@ export interface OdooUploadResult {
   uploadedCount: number;
   errors: string[];
   createdRecords?: number[];
+  rowErrors?: { index: number; message: string }[];
+  duplicatesCount?: number;
 }
+
 
 export class OdooService {
   private static async authenticate(config: OdooConfig): Promise<number> {

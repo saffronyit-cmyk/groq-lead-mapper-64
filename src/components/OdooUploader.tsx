@@ -99,6 +99,9 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
               {uploadResult.success ? (
                 <div>
                   <p>Successfully uploaded {uploadResult.uploadedCount} leads to Odoo!</p>
+                  {typeof (uploadResult as any).duplicatesCount === 'number' && (
+                    <p className="mt-1 text-sm">Duplicates detected: {(uploadResult as any).duplicatesCount} (not blocked)</p>
+                  )}
                   {uploadResult.errors.length > 0 && (
                     <p className="mt-2 text-sm">
                       {uploadResult.errors.length} warnings/errors occurred during upload.
