@@ -250,8 +250,19 @@ export const ValidationResults: React.FC<ValidationResultsProps> = ({
       {showOdooConfig && (
         <div className="mt-6">
           <OdooConfig
-            onConfigSave={handleOdooConfigSave}
-            initialConfig={odooConfig}
+            onConfigSave={(config) => handleOdooConfigSave({
+              url: config.url,
+              database: config.database,
+              username: config.username,
+              apiKey: config.apiKey
+            })}
+            initialConfig={odooConfig ? {
+              name: 'Default Config',
+              url: odooConfig.url,
+              database: odooConfig.database,
+              username: odooConfig.username,
+              apiKey: odooConfig.apiKey
+            } : null}
           />
         </div>
       )}

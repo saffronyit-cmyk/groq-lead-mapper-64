@@ -1,15 +1,17 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FileUpload } from '@/components/FileUpload';
 import { MappingView } from '@/components/MappingView';
 import { ValidationResults } from '@/components/ValidationResults';
 import { ProgressStepper } from '@/components/ProgressStepper';
 import { Logo } from '@/components/Logo';
 import { Footer } from '@/components/Footer';
+import { Button } from '@/components/ui/button';
 import { GroqService } from '@/services/groqService';
 import { FileProcessor, ParsedData } from '@/services/fileProcessor';
 import { useToast } from '@/hooks/use-toast';
 import { useOptimizedDataProcessing } from '@/hooks/useOptimizedDataProcessing';
-import { Sparkles, Shield, Zap } from 'lucide-react';
+import { Sparkles, Shield, Zap, User } from 'lucide-react';
 interface FieldMapping {
   sourceField: string;
   targetField: string;
@@ -38,6 +40,7 @@ const Index = () => {
   const {
     debounce
   } = useOptimizedDataProcessing();
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
@@ -227,6 +230,15 @@ const Index = () => {
                   <Shield className="w-4 h-4 text-primary" />
                   <span className="text-sm font-medium text-primary">Enterprise Ready</span>
                 </div>
+                <Button
+                  onClick={() => navigate('/auth')}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <User className="w-4 h-4" />
+                  Sign In
+                </Button>
               </div>
             </div>
           </nav>

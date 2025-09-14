@@ -8,12 +8,13 @@ import { Loader2, CheckCircle, XCircle, Database, Key, Globe, User } from 'lucid
 import { OdooService, type OdooConfig } from '@/services/odooService';
 
 interface OdooConfigProps {
-  onConfigSave: (config: OdooConfig) => void;
-  initialConfig?: OdooConfig | null;
+  onConfigSave: (config: OdooConfig & { name: string }) => void;
+  initialConfig?: (OdooConfig & { name: string }) | null;
 }
 
 export default function OdooConfig({ onConfigSave, initialConfig }: OdooConfigProps) {
-  const [config, setConfig] = useState<OdooConfig>({
+  const [config, setConfig] = useState<OdooConfig & { name: string }>({
+    name: initialConfig?.name || '',
     url: initialConfig?.url || '',
     database: initialConfig?.database || '',
     username: initialConfig?.username || '',
@@ -22,7 +23,7 @@ export default function OdooConfig({ onConfigSave, initialConfig }: OdooConfigPr
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const handleInputChange = (field: keyof OdooConfig, value: string) => {
+  const handleInputChange = (field: keyof (OdooConfig & { name: string }), value: string) => {
     setConfig(prev => ({ ...prev, [field]: value }));
     setTestResult(null);
   };
@@ -35,7 +36,13 @@ export default function OdooConfig({ onConfigSave, initialConfig }: OdooConfigPr
 
     setTesting(true);
     try {
-      const result = await OdooService.testConnection(config);
+      const testConfig = {
+        url: config.url,
+        database: config.database,
+        username: config.username,
+        apiKey: config.apiKey
+      };
+      const result = await OdooService.testConnection(testConfig);
       setTestResult(result);
     } catch (error) {
       setTestResult({ 
@@ -55,7 +62,7 @@ export default function OdooConfig({ onConfigSave, initialConfig }: OdooConfigPr
     }
   };
 
-  const isFormValid = config.url && config.database && config.username && config.apiKey;
+  const isFormValid = config.name && config.url && config.database && config.username && config.apiKey;
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
@@ -70,6 +77,19 @@ export default function OdooConfig({ onConfigSave, initialConfig }: OdooConfigPr
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="name">Configuration Name</Label>
+            <Input
+              id="name"
+              placeholder="e.g., Production Odoo, Test Environment"
+              value={config.name}
+              onChange={(e) => handleInputChange('name', e.target.value)}
+              className="bg-background/50"
+            />
+          </div>
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="url" className="flex items-center gap-2">
