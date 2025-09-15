@@ -18,8 +18,7 @@ interface OdooUploadResult {
   uploadedCount: number;
   errors: string[];
   createdRecords?: number[];
-  rowErrors?: { index: number; message: string }[];
-  duplicatesCount?: number;
+  createdContacts?: number[];
 }
 
 
@@ -146,106 +145,137 @@ function shouldSkipInNotes(key: string) {
   return skip.has(String(key));
 }
 
-async function transformLeadToCrmLeadAsync(
+async function createContactAndOpportunity(
   baseUrl: string,
   db: string,
   uid: number,
   apiKey: string,
   lead: Record<string, any>,
   mappings: any[],
-): Promise<Record<string, any>> {
-  const crmLead: Record<string, any> = { type: "opportunity" };
+): Promise<{ contactId?: number; opportunityId?: number }> {
   const mappedSources = new Set<string>();
+  
+  // Prepare contact data
+  const contactData: Record<string, any> = {
+    is_company: false,
+    customer_rank: 1,
+  };
+  
+  // Prepare opportunity data
+  const opportunityData: Record<string, any> = {
+    type: "opportunity",
+  };
 
   let pendingStateName: string | null = null;
 
+  // Process all mappings and field data without validation
   for (const mapping of mappings || []) {
     const src = mapping.sourceField;
     const target = mapping.targetField;
     const value = lead?.[src];
-    if (value == null || String(value).trim() === "") continue;
+    if (value == null) continue; // Allow empty strings through
     mappedSources.add(src);
 
+    const strValue = String(value);
+
     switch (target) {
-      case "External ID":
-        // Intentionally ignored as requested
-        break;
       case "Name":
-        crmLead.name = value;
+      case "Contact Name":
+        contactData.name = strValue;
+        if (!opportunityData.name) opportunityData.name = strValue;
         break;
       case "Company Name":
-        crmLead.partner_name = value;
-        if (!crmLead.name) crmLead.name = String(value);
-        break;
-      case "Contact Name":
-        crmLead.contact_name = value;
-        if (!crmLead.name) crmLead.name = String(value);
+        contactData.parent_name = strValue;
+        opportunityData.partner_name = strValue;
+        if (!contactData.name) contactData.name = strValue;
+        if (!opportunityData.name) opportunityData.name = strValue;
         break;
       case "Email":
-        crmLead.email_from = value;
+        contactData.email = strValue;
+        opportunityData.email_from = strValue;
         break;
       case "Phone":
-        crmLead.phone = value;
+        contactData.phone = strValue;
+        opportunityData.phone = strValue;
         break;
       case "Mobile":
-        crmLead.mobile = value;
+        contactData.mobile = strValue;
+        opportunityData.mobile = strValue;
         break;
       case "Street":
-        crmLead.street = value;
+        contactData.street = strValue;
+        opportunityData.street = strValue;
         break;
       case "Street2":
-        crmLead.street2 = value;
+        contactData.street2 = strValue;
+        opportunityData.street2 = strValue;
         break;
       case "City":
-        crmLead.city = value;
+        contactData.city = strValue;
+        opportunityData.city = strValue;
         break;
       case "State":
-        pendingStateName = String(value);
+        pendingStateName = strValue;
         break;
       case "Zip":
-        crmLead.zip = value;
+        contactData.zip = strValue;
+        opportunityData.zip = strValue;
         break;
       case "Country": {
-        const str = String(value).trim();
-        const asNum = Number(str);
+        const asNum = Number(strValue);
         if (!Number.isNaN(asNum) && asNum > 0) {
-          crmLead.country_id = asNum;
+          contactData.country_id = asNum;
+          opportunityData.country_id = asNum;
         } else {
-          const cid = await resolveCountryId(baseUrl, db, uid, apiKey, str);
-          if (cid) crmLead.country_id = cid;
+          try {
+            const cid = await resolveCountryId(baseUrl, db, uid, apiKey, strValue);
+            if (cid) {
+              contactData.country_id = cid;
+              opportunityData.country_id = cid;
+            }
+          } catch (e) {
+            // Ignore country resolution errors
+          }
         }
         break;
       }
       case "Website":
-        crmLead.website = value;
+        contactData.website = strValue;
+        opportunityData.website = strValue;
         break;
       case "Job Position":
-        crmLead.function = value;
+        contactData.function = strValue;
+        opportunityData.function = strValue;
         break;
-      case "Notes":
-        crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + String(value);
-        break;
-      case "medium_id":
       case "Medium": {
-        const id = await resolveByName(baseUrl, db, uid, apiKey, "utm.medium", String(value));
-        if (id) crmLead.medium_id = id;
+        try {
+          const id = await resolveByName(baseUrl, db, uid, apiKey, "utm.medium", strValue);
+          if (id) opportunityData.medium_id = id;
+        } catch (e) {
+          // Ignore UTM resolution errors
+        }
         break;
       }
-      case "source_id":
       case "Source": {
-        const id = await resolveByName(baseUrl, db, uid, apiKey, "utm.source", String(value));
-        if (id) crmLead.source_id = id;
+        try {
+          const id = await resolveByName(baseUrl, db, uid, apiKey, "utm.source", strValue);
+          if (id) opportunityData.source_id = id;
+        } catch (e) {
+          // Ignore UTM resolution errors
+        }
         break;
       }
-      case "campaign_id":
       case "Campaign": {
-        const id = await resolveByName(baseUrl, db, uid, apiKey, "utm.campaign", String(value));
-        if (id) crmLead.campaign_id = id;
+        try {
+          const id = await resolveByName(baseUrl, db, uid, apiKey, "utm.campaign", strValue);
+          if (id) opportunityData.campaign_id = id;
+        } catch (e) {
+          // Ignore UTM resolution errors
+        }
         break;
       }
-      case "referred":
-      case "Referred":
-        crmLead.referred = value;
+      case "Opportunity":
+        opportunityData.name = strValue;
         break;
       default:
         break;
@@ -254,12 +284,18 @@ async function transformLeadToCrmLeadAsync(
 
   // Resolve state if provided
   if (pendingStateName) {
-    const sid = await resolveStateId(baseUrl, db, uid, apiKey, pendingStateName, crmLead.country_id);
-    if (sid) crmLead.state_id = sid;
-    else crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + `State: ${pendingStateName}`;
+    try {
+      const sid = await resolveStateId(baseUrl, db, uid, apiKey, pendingStateName, contactData.country_id);
+      if (sid) {
+        contactData.state_id = sid;
+        opportunityData.state_id = sid;
+      }
+    } catch (e) {
+      // Ignore state resolution errors
+    }
   }
 
-  // Add any remaining unmapped fields to description (except skipped)
+  // Add unmapped fields to description
   const unmapped: string[] = [];
   for (const key of Object.keys(lead || {})) {
     if (!mappedSources.has(key) && !shouldSkipInNotes(key)) {
@@ -268,14 +304,44 @@ async function transformLeadToCrmLeadAsync(
     }
   }
   if (unmapped.length > 0) {
-    crmLead.description = (crmLead.description ? `${crmLead.description}\n` : "") + unmapped.join("\n");
+    const description = unmapped.join("\n");
+    contactData.comment = description;
+    opportunityData.description = description;
   }
 
-  if (!crmLead.name) {
-    crmLead.name = crmLead.contact_name || crmLead.partner_name || crmLead.email_from || "Imported Opportunity";
+  // Set default names if missing
+  if (!contactData.name) {
+    contactData.name = contactData.parent_name || contactData.email || "Imported Contact";
+  }
+  if (!opportunityData.name) {
+    opportunityData.name = contactData.name || "Imported Opportunity";
   }
 
-  return crmLead;
+  let contactId: number | undefined;
+  let opportunityId: number | undefined;
+
+  // Create contact first
+  try {
+    const createdContact = await callKw(baseUrl, db, uid, apiKey, "res.partner", "create", [[contactData]], {});
+    contactId = Array.isArray(createdContact) ? createdContact[0] : createdContact;
+  } catch (e) {
+    console.error("Failed to create contact:", e);
+  }
+
+  // Link contact to opportunity if contact was created successfully
+  if (contactId) {
+    opportunityData.partner_id = contactId;
+  }
+
+  // Create opportunity
+  try {
+    const createdOpportunity = await callKw(baseUrl, db, uid, apiKey, "crm.lead", "create", [[opportunityData]], {});
+    opportunityId = Array.isArray(createdOpportunity) ? createdOpportunity[0] : createdOpportunity;
+  } catch (e) {
+    console.error("Failed to create opportunity:", e);
+  }
+
+  return { contactId, opportunityId };
 }
 
 
@@ -300,47 +366,38 @@ serve(async (req: Request) => {
       const rawLeads = Array.isArray(leads) ? leads : [];
       const mapDefs = Array.isArray(mappings) ? mappings : [];
 
-      // Simple duplicate count (by Email/Phone/Mobile based on mapping)
-      const emailMap = mapDefs.find((m: any) => m.targetField === "Email");
-      const phoneMap = mapDefs.find((m: any) => m.targetField === "Phone") || mapDefs.find((m: any) => m.targetField === "Mobile");
-      const seen = new Map<string, number>();
-      let duplicatesCount = 0;
-      for (const lead of rawLeads) {
-        const key = String(
-          (emailMap ? lead[emailMap.sourceField] : "") ||
-          (phoneMap ? lead[phoneMap.sourceField] : "") ||
-          ""
-        ).toLowerCase().trim();
-        if (!key) continue;
-        const prev = seen.get(key) || 0;
-        if (prev >= 1) duplicatesCount++;
-        seen.set(key, prev + 1);
-      }
-
       const createdRecords: number[] = [];
-      const rowErrors: { index: number; message: string }[] = [];
+      const createdContacts: number[] = [];
+      let uploadedCount = 0;
 
+      // Process all leads without validation or duplicate checking
       for (let i = 0; i < rawLeads.length; i++) {
         try {
-          const payload = await transformLeadToCrmLeadAsync(baseUrl, config.database, uid, config.apiKey, rawLeads[i], mapDefs);
-          const created: number | number[] = await callKw(baseUrl, config.database, uid, config.apiKey, "crm.lead", "create", [[payload]], {});
-          if (Array.isArray(created)) {
-            if (created.length) createdRecords.push(created[0]);
-          } else if (typeof created === "number") {
-            createdRecords.push(created);
+          const result = await createContactAndOpportunity(baseUrl, config.database, uid, config.apiKey, rawLeads[i], mapDefs);
+          
+          if (result.contactId) {
+            createdContacts.push(result.contactId);
+          }
+          if (result.opportunityId) {
+            createdRecords.push(result.opportunityId);
+          }
+          
+          // Count as uploaded if either contact or opportunity was created
+          if (result.contactId || result.opportunityId) {
+            uploadedCount++;
           }
         } catch (e) {
-          rowErrors.push({ index: i, message: e instanceof Error ? e.message : String(e) });
+          // Log error but continue processing other records
+          console.error(`Error processing lead ${i + 1}:`, e);
         }
       }
 
       const response: OdooUploadResult = {
-        success: createdRecords.length > 0,
-        uploadedCount: createdRecords.length,
-        errors: rowErrors.slice(0, 3).map((e) => `Row ${e.index + 2}: ${e.message}`),
+        success: uploadedCount > 0,
+        uploadedCount,
+        errors: [], // No errors reported as requested
         createdRecords,
-        rowErrors,
-        duplicatesCount,
+        createdContacts,
       };
       return json(response);
     }

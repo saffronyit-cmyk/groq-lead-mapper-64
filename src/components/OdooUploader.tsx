@@ -55,7 +55,7 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
           Upload to Odoo
         </CardTitle>
         <CardDescription>
-          Upload {data.length} leads directly to your Odoo database
+          Upload {data.length} leads to create both contacts and opportunities in your Odoo database
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -98,14 +98,12 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
             <AlertDescription>
               {uploadResult.success ? (
                 <div>
-                  <p>Successfully uploaded {uploadResult.uploadedCount} leads to Odoo!</p>
-                  {typeof (uploadResult as any).duplicatesCount === 'number' && (
-                    <p className="mt-1 text-sm">Duplicates detected: {(uploadResult as any).duplicatesCount} (not blocked)</p>
+                  <p>Successfully uploaded {uploadResult.uploadedCount} records to Odoo!</p>
+                  {uploadResult.createdContacts && uploadResult.createdContacts.length > 0 && (
+                    <p className="mt-1 text-sm">✓ Created {uploadResult.createdContacts.length} contacts</p>
                   )}
-                  {uploadResult.errors.length > 0 && (
-                    <p className="mt-2 text-sm">
-                      {uploadResult.errors.length} warnings/errors occurred during upload.
-                    </p>
+                  {uploadResult.createdRecords && uploadResult.createdRecords.length > 0 && (
+                    <p className="mt-1 text-sm">✓ Created {uploadResult.createdRecords.length} opportunities</p>
                   )}
                 </div>
               ) : (
@@ -153,8 +151,8 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
         </div>
 
         <div className="text-xs text-muted-foreground">
-          <p><strong>Note:</strong> Standard fields (Name, Email, Phone, etc.) will be mapped to corresponding Odoo fields. 
-          Any unmapped custom fields will be added to the Notes/Comments field.</p>
+          <p><strong>Note:</strong> Each lead will create both a Contact (res.partner) and an Opportunity (crm.lead) in Odoo. 
+          All data is uploaded directly without validation - any unmapped fields will be added to the description/notes.</p>
         </div>
       </CardContent>
     </Card>
