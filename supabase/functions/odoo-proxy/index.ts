@@ -180,13 +180,18 @@ async function createContactAndOpportunity(
 
     switch (target) {
       case "Name":
-      case "Contact Name":
         contactData.name = strValue;
+        if (!opportunityData.name) opportunityData.name = strValue;
+        break;
+      case "Contact Name":
+        // Use Contact Name as the primary contact name if Name is not available
+        if (!contactData.name) contactData.name = strValue;
         if (!opportunityData.name) opportunityData.name = strValue;
         break;
       case "Company Name":
         contactData.parent_name = strValue;
         opportunityData.partner_name = strValue;
+        // Only use company name as contact name if no other name is available
         if (!contactData.name) contactData.name = strValue;
         if (!opportunityData.name) opportunityData.name = strValue;
         break;

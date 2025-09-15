@@ -219,11 +219,8 @@ export class GroqService {
       duplicateRecords: number;
     };
   }> {
-    const issues: ValidationIssue[] = [];
+    // NO VALIDATION - Accept all records as-is
     const validRecords: any[] = [];
-
-    const seenEmails = new Set<string>();
-    const seenPhones = new Set<string>();
 
     const getVal = (record: any, keys: string[]): string => {
       for (const k of keys) {
@@ -233,13 +230,7 @@ export class GroqService {
       return '';
     };
 
-    const normEmail = (e: string) => e.toLowerCase();
-    const normPhone = (p: string) => p.replace(/[^\d+]/g, '');
-
-    mappedData.forEach((record, index) => {
-      let hasError = false;
-      const rowNum = index + 2; // Account for header row
-
+    mappedData.forEach((record) => {
       // Auto-correct and normalize data
       this.normalizeRecordData(record);
 
@@ -248,97 +239,29 @@ export class GroqService {
       const companyVal = getVal(record, ['Company Name', 'company_name']);
       if (!nameVal && companyVal) {
         record['Name'] = companyVal;
-        record['name'] = companyVal; // keep legacy alias
+        record['name'] = companyVal;
         nameVal = companyVal;
       }
 
-      // Email validation
-      const emailVal = getVal(record, ['Email', 'email']);
-      if (emailVal) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(emailVal)) {
-          issues.push({
-            type: 'error',
-            field: 'Email',
-            value: emailVal,
-            row: rowNum,
-            message: 'Invalid email format'
-          });
-          hasError = true;
-        } else if (seenEmails.has(normEmail(emailVal))) {
-          issues.push({
-            type: 'duplicate',
-            field: 'Email',
-            value: emailVal,
-            row: rowNum,
-            message: 'Duplicate email address'
-          });
-        } else {
-          seenEmails.add(normEmail(emailVal));
-        }
+      // If still no name, use email or set default
+      if (!nameVal) {
+        const emailVal = getVal(record, ['Email', 'email']);
+        record['Name'] = emailVal || 'Imported Lead';
       }
 
-      // Phone validation (Phone and Mobile)
-      const phoneVal = getVal(record, ['Phone', 'phone']);
-      const mobileVal = getVal(record, ['Mobile', 'mobile']);
-
-      const validatePhone = (val: string, fieldLabel: string) => {
-        const digits = normPhone(val);
-        const phoneRegex = /^[+]?\d{7,16}$/; // lenient but sane
-        if (!phoneRegex.test(digits)) {
-          issues.push({
-            type: 'warning',
-            field: fieldLabel,
-            value: val,
-            row: rowNum,
-            message: 'Phone number format may be invalid'
-          });
-        } else if (seenPhones.has(digits)) {
-          issues.push({
-            type: 'duplicate',
-            field: fieldLabel,
-            value: val,
-            row: rowNum,
-            message: 'Duplicate phone number'
-          });
-        } else {
-          seenPhones.add(digits);
-        }
-      };
-
-      if (phoneVal) validatePhone(phoneVal, 'Phone');
-      if (mobileVal) validatePhone(mobileVal, 'Mobile');
-
-      // Required field validation
-      if (!nameVal && !companyVal) {
-        issues.push({
-          type: 'error',
-          field: 'Name',
-          value: '',
-          row: rowNum,
-          message: 'Name is required (copy Company Name if Name missing)'
-        });
-        hasError = true;
-      }
-
-      if (!hasError) {
-        validRecords.push(record);
-      }
+      // Always add record - no validation checks
+      validRecords.push(record);
     });
-
-    const errorCount = issues.filter(i => i.type === 'error').length;
-    const warningCount = issues.filter(i => i.type === 'warning').length;
-    const duplicateCount = issues.filter(i => i.type === 'duplicate').length;
 
     return {
       validRecords,
-      issues,
+      issues: [], // No issues since we skip validation
       stats: {
         totalRecords: mappedData.length,
         validRecords: validRecords.length,
-        errorRecords: errorCount,
-        warningRecords: warningCount,
-        duplicateRecords: duplicateCount
+        errorRecords: 0,
+        warningRecords: 0,
+        duplicateRecords: 0
       }
     };
   }

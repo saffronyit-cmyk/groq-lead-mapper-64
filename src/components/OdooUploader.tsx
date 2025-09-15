@@ -55,7 +55,7 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
           Upload to Odoo
         </CardTitle>
         <CardDescription>
-          Upload {data.length} leads to create both contacts and opportunities in your Odoo database
+          Upload all {data.length} leads directly to your Odoo database (no validation checks)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -151,8 +151,8 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
         </div>
 
         <div className="text-xs text-muted-foreground">
-          <p><strong>Note:</strong> Each lead will create both a Contact (res.partner) and an Opportunity (crm.lead) in Odoo. 
-          All data is uploaded directly without validation - any unmapped fields will be added to the description/notes.</p>
+          <p><strong>Note:</strong> All {data.length} leads will be uploaded directly without any validation checks. 
+          Each lead creates both a Contact and an Opportunity in Odoo. Unmapped fields are added to notes.</p>
         </div>
       </CardContent>
     </Card>
