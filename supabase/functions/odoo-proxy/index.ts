@@ -21,7 +21,6 @@ interface OdooUploadResult {
   createdContacts?: number[];
 }
 
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -88,13 +87,13 @@ async function resolveByName(
   const term = String(name).trim();
   if (!term) return null;
   try {
-    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, model, "search", [[[["name", "ilike", term]]], { limit: 1 }]);
+    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, model, "search", [[['name', 'ilike', term]]], { limit: 1 });
     if (Array.isArray(ids) && ids.length > 0) return ids[0];
   } catch (_) {
     // ignore search errors
   }
   try {
-    const created: number = await callKw(baseUrl, db, uid, apiKey, model, "create", [[{ name: term }]]);
+    const created: number = await callKw(baseUrl, db, uid, apiKey, model, "create", [{ name: term }]);
     return typeof created === "number" ? created : null;
   } catch (_) {
     return null;
@@ -111,11 +110,11 @@ async function resolveCountryId(
   const term = String(country).trim();
   if (!term) return null;
   try {
-    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, "res.country", "search", [[[["name", "ilike", term]]], { limit: 1 }]);
+    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, "res.country", "search", [[['name', 'ilike', term]]], { limit: 1 });
     if (ids?.length) return ids[0];
   } catch (_) {}
   try {
-    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, "res.country", "search", [[[["code", "ilike", term]]], { limit: 1 }]);
+    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, "res.country", "search", [[['code', 'ilike', term]]], { limit: 1 });
     if (ids?.length) return ids[0];
   } catch (_) {}
   return null;
@@ -182,9 +181,10 @@ async function createContactAndOpportunity(
     customer_rank: 1,
   };
   
-  // Prepare opportunity data
+  // Prepare opportunity data - assign to user for "My Pipeline"
   const opportunityData: Record<string, any> = {
     type: "opportunity",
+    user_id: uid, // Assign to current user so it appears in My Pipeline
   };
 
   let pendingStateName: string | null = null;
@@ -365,8 +365,10 @@ async function createContactAndOpportunity(
   if (unmappedFields.length > 0) {
     const notesHeader = "=== Additional Lead Information ===";
     const formattedNotes = [notesHeader, ...unmappedFields].join("\n");
-    contactData.comment = formattedNotes;
-    opportunityData.description = formattedNotes;
+    const existingContactNote = contactData.comment ? String(contactData.comment).trim() + "\n" : "";
+    const existingOppNote = opportunityData.description ? String(opportunityData.description).trim() + "\n" : "";
+    contactData.comment = `${existingContactNote}${formattedNotes}`;
+    opportunityData.description = `${existingOppNote}${formattedNotes}`;
   }
 
   // Set proper names - Priority: Contact Name > Company Name > Email > Default
@@ -399,8 +401,10 @@ async function createContactAndOpportunity(
 
   // Create contact first
   try {
+    console.log("Creating contact with data:", contactData);
     const createdContact = await callKw(baseUrl, db, uid, apiKey, "res.partner", "create", [contactData], {});
     contactId = Array.isArray(createdContact) ? createdContact[0] : createdContact;
+    console.log("Created contact ID:", contactId);
   } catch (e) {
     console.error("Failed to create contact:", e);
   }
@@ -412,15 +416,16 @@ async function createContactAndOpportunity(
 
   // Create opportunity
   try {
+    console.log("Creating opportunity with data:", opportunityData);
     const createdOpportunity = await callKw(baseUrl, db, uid, apiKey, "crm.lead", "create", [opportunityData], {});
     opportunityId = Array.isArray(createdOpportunity) ? createdOpportunity[0] : createdOpportunity;
+    console.log("Created opportunity ID:", opportunityId);
   } catch (e) {
     console.error("Failed to create opportunity:", e);
   }
 
   return { contactId, opportunityId };
 }
-
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -433,7 +438,9 @@ serve(async (req: Request) => {
     }
 
     const baseUrl = sanitizeUrl(String(config.url));
+    console.log("Authenticating with Odoo...");
     const { uid } = await authenticate(baseUrl, config.database, config.username, config.apiKey);
+    console.log("Authentication successful, UID:", uid);
 
     if (action === "test") {
       return json({ success: true, message: `Connection successful (uid ${uid})` });
@@ -443,20 +450,25 @@ serve(async (req: Request) => {
       const rawLeads = Array.isArray(leads) ? leads : [];
       const mapDefs = Array.isArray(mappings) ? mappings : [];
 
+      console.log(`Starting upload of ${rawLeads.length} leads with ${mapDefs.length} mappings`);
+
       const createdRecords: number[] = [];
       const createdContacts: number[] = [];
       let uploadedCount = 0;
 
-      // Process all leads without validation or duplicate checking
+      // Process all leads without validation - force upload everything
       for (let i = 0; i < rawLeads.length; i++) {
         try {
+          console.log(`Processing lead ${i + 1}/${rawLeads.length}:`, rawLeads[i]);
           const result = await createContactAndOpportunity(baseUrl, config.database, uid, config.apiKey, rawLeads[i], mapDefs);
           
           if (result.contactId) {
             createdContacts.push(result.contactId);
+            console.log(`Created contact ${result.contactId}`);
           }
           if (result.opportunityId) {
             createdRecords.push(result.opportunityId);
+            console.log(`Created opportunity ${result.opportunityId}`);
           }
           
           // Count as uploaded if either contact or opportunity was created
@@ -464,10 +476,15 @@ serve(async (req: Request) => {
             uploadedCount++;
           }
         } catch (e) {
-          // Log error but continue processing other records
+          // Log error but continue processing - don't stop for any errors
           console.error(`Error processing lead ${i + 1}:`, e);
+          // Still count as attempted upload
+          uploadedCount++;
         }
       }
+
+      console.log(`Upload completed: ${uploadedCount}/${rawLeads.length} processed`);
+      console.log(`Created ${createdContacts.length} contacts and ${createdRecords.length} opportunities`);
 
       const response: OdooUploadResult = {
         success: uploadedCount > 0,
