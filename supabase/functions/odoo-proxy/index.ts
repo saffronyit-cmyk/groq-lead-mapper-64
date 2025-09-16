@@ -167,33 +167,37 @@ async function createContactAndOpportunity(
   };
 
   let pendingStateName: string | null = null;
+  let contactName: string | null = null;
+  let companyName: string | null = null;
 
   // Process all mappings and field data without validation
   for (const mapping of mappings || []) {
     const src = mapping.sourceField;
     const target = mapping.targetField;
     const value = lead?.[src];
-    if (value == null) continue; // Allow empty strings through
+    if (value == null || String(value).trim() === "") continue;
     mappedSources.add(src);
 
-    const strValue = String(value);
+    const strValue = String(value).trim();
 
     switch (target) {
       case "Name":
+        contactName = strValue;
         contactData.name = strValue;
         if (!opportunityData.name) opportunityData.name = strValue;
         break;
       case "Contact Name":
-        // Use Contact Name as the primary contact name if Name is not available
-        if (!contactData.name) contactData.name = strValue;
+        // Contact Name takes priority for contact record
+        contactName = strValue;
+        contactData.name = strValue;
         if (!opportunityData.name) opportunityData.name = strValue;
         break;
       case "Company Name":
+        companyName = strValue;
         contactData.parent_name = strValue;
         opportunityData.partner_name = strValue;
-        // Only use company name as contact name if no other name is available
-        if (!contactData.name) contactData.name = strValue;
-        if (!opportunityData.name) opportunityData.name = strValue;
+        // Use company name for opportunity name if no contact name
+        if (!opportunityData.name && !contactName) opportunityData.name = strValue;
         break;
       case "Email":
         contactData.email = strValue;
@@ -300,26 +304,47 @@ async function createContactAndOpportunity(
     }
   }
 
-  // Add unmapped fields to description
-  const unmapped: string[] = [];
+  // Format unmapped fields into Notes with proper headers and new lines
+  const unmappedFields: string[] = [];
   for (const key of Object.keys(lead || {})) {
     if (!mappedSources.has(key) && !shouldSkipInNotes(key)) {
       const v = lead[key];
-      if (v != null && String(v).trim() !== "") unmapped.push(`${key}: ${v}`);
+      if (v != null && String(v).trim() !== "") {
+        unmappedFields.push(`${key}: ${String(v).trim()}`);
+      }
     }
   }
-  if (unmapped.length > 0) {
-    const description = unmapped.join("\n");
-    contactData.comment = description;
-    opportunityData.description = description;
+  
+  if (unmappedFields.length > 0) {
+    const notesHeader = "=== Additional Lead Information ===";
+    const formattedNotes = [notesHeader, ...unmappedFields].join("\n");
+    contactData.comment = formattedNotes;
+    opportunityData.description = formattedNotes;
   }
 
-  // Set default names if missing
+  // Set proper names - Priority: Contact Name > Company Name > Email > Default
   if (!contactData.name) {
-    contactData.name = contactData.parent_name || contactData.email || "Imported Contact";
+    if (contactName) {
+      contactData.name = contactName;
+    } else if (companyName) {
+      contactData.name = companyName;
+    } else if (contactData.email) {
+      contactData.name = contactData.email;
+    } else {
+      contactData.name = "Imported Contact";
+    }
   }
+
   if (!opportunityData.name) {
-    opportunityData.name = contactData.name || "Imported Opportunity";
+    if (contactName) {
+      opportunityData.name = contactName;
+    } else if (companyName) {
+      opportunityData.name = companyName;
+    } else if (contactData.name) {
+      opportunityData.name = contactData.name;
+    } else {
+      opportunityData.name = "Imported Opportunity";
+    }
   }
 
   let contactId: number | undefined;
