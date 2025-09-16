@@ -131,13 +131,34 @@ async function resolveStateId(
 ): Promise<number | null> {
   const term = String(state).trim();
   if (!term) return null;
-  const domain: any[] = [["name", "ilike", term]];
-  if (countryId) domain.push(["country_id", "=", countryId]);
+  const domain: any[] = [['name', 'ilike', term]];
+  if (countryId) domain.push(['country_id', '=', countryId]);
   try {
-    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, "res.country.state", "search", [[[...domain], { limit: 1 }]]);
+    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, 'res.country.state', 'search', [domain], { limit: 1 });
     if (ids?.length) return ids[0];
   } catch (_) {}
   return null;
+}
+
+async function resolveCompanyId(
+  baseUrl: string,
+  db: string,
+  uid: number,
+  apiKey: string,
+  company: string,
+): Promise<number | null> {
+  const term = String(company).trim();
+  if (!term) return null;
+  try {
+    const ids: number[] = await callKw(baseUrl, db, uid, apiKey, 'res.partner', 'search', [[['is_company', '=', true], ['name', 'ilike', term]]], { limit: 1 });
+    if (ids?.length) return ids[0];
+  } catch (_) {}
+  try {
+    const created: number = await callKw(baseUrl, db, uid, apiKey, 'res.partner', 'create', [{ name: term, is_company: true, customer_rank: 1 }]);
+    return typeof created === 'number' ? created : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function shouldSkipInNotes(key: string) {
@@ -194,7 +215,7 @@ async function createContactAndOpportunity(
         break;
       case "Company Name":
         companyName = strValue;
-        contactData.parent_name = strValue;
+        // Resolve to company later and set as parent_id on contact
         opportunityData.partner_name = strValue;
         // Use company name for opportunity name if no contact name
         if (!opportunityData.name && !contactName) opportunityData.name = strValue;
@@ -283,6 +304,22 @@ async function createContactAndOpportunity(
         }
         break;
       }
+      case "Notes": {
+        // Map directly into notes/description
+        const existingContactNote = contactData.comment ? String(contactData.comment).trim() + "\n" : "";
+        const existingOppNote = opportunityData.description ? String(opportunityData.description).trim() + "\n" : "";
+        contactData.comment = `${existingContactNote}${strValue}`;
+        opportunityData.description = `${existingOppNote}${strValue}`;
+        break;
+      }
+      case "referred": {
+        const line = `Referred: ${strValue}`;
+        const existingContactNote = contactData.comment ? String(contactData.comment).trim() + "\n" : "";
+        const existingOppNote = opportunityData.description ? String(opportunityData.description).trim() + "\n" : "";
+        contactData.comment = `${existingContactNote}${line}`;
+        opportunityData.description = `${existingOppNote}${line}`;
+        break;
+      }
       case "Opportunity":
         opportunityData.name = strValue;
         break;
@@ -302,6 +339,16 @@ async function createContactAndOpportunity(
     } catch (e) {
       // Ignore state resolution errors
     }
+  }
+
+  // Resolve company if provided
+  if (companyName) {
+    try {
+      const compId = await resolveCompanyId(baseUrl, db, uid, apiKey, companyName);
+      if (compId) {
+        contactData.parent_id = compId;
+      }
+    } catch (_) {}
   }
 
   // Format unmapped fields into Notes with proper headers and new lines
@@ -352,7 +399,7 @@ async function createContactAndOpportunity(
 
   // Create contact first
   try {
-    const createdContact = await callKw(baseUrl, db, uid, apiKey, "res.partner", "create", [[contactData]], {});
+    const createdContact = await callKw(baseUrl, db, uid, apiKey, "res.partner", "create", [contactData], {});
     contactId = Array.isArray(createdContact) ? createdContact[0] : createdContact;
   } catch (e) {
     console.error("Failed to create contact:", e);
@@ -365,7 +412,7 @@ async function createContactAndOpportunity(
 
   // Create opportunity
   try {
-    const createdOpportunity = await callKw(baseUrl, db, uid, apiKey, "crm.lead", "create", [[opportunityData]], {});
+    const createdOpportunity = await callKw(baseUrl, db, uid, apiKey, "crm.lead", "create", [opportunityData], {});
     opportunityId = Array.isArray(createdOpportunity) ? createdOpportunity[0] : createdOpportunity;
   } catch (e) {
     console.error("Failed to create opportunity:", e);

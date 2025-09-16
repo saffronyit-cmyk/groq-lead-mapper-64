@@ -151,8 +151,7 @@ export default function OdooUploader({ config, data, mappings, onUploadComplete 
         </div>
 
         <div className="text-xs text-muted-foreground">
-          <p><strong>Note:</strong> All {data.length} leads will be uploaded directly without any validation checks. 
-          Each lead creates both a Contact and an Opportunity in Odoo. Unmapped fields are added to notes.</p>
+          <p><strong>Note:</strong> All {data.length} leads will be uploaded directly to Odoo without any validation or duplicate checks. Unmapped extra columns are added under Notes.</p>
         </div>
       </CardContent>
     </Card>
